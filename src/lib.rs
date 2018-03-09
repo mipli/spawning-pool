@@ -80,7 +80,7 @@ macro_rules! create_spawning_pool {
             #[allow(dead_code)]
             pub fn spawn_entity(&mut self) -> EntityId {
                 let id = self.next_id;
-                self.next_id = self.next_id + 1;
+                self.next_id += 1;
                 id
             }
 

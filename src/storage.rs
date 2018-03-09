@@ -17,7 +17,7 @@ pub trait Storage<T: Clone> {
 }
 
 ///
-/// HashMap implementation of the storage trait, probably the best default storage to use
+/// Hash map implementation of the storage trait, probably the best default storage to use
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HashMapStorage<T: Clone> {
