@@ -50,9 +50,11 @@ macro_rules! create_spawning_pool {
         $storage: ident
         )), +)
         => (
+            use std::collections::HashSet;
             #[derive(Debug, Serialize, Deserialize)]
             pub struct SpawningPool {
                 next_id: u64,
+                removed: HashSet<EntityId>,
             $(
                 $store_name: $storage<$component>,
             )+
@@ -63,10 +65,21 @@ macro_rules! create_spawning_pool {
                 pub fn new() -> Self {
                     SpawningPool{
                         next_id: 1,
+                        removed: Default::default(),
                         $(
                             $store_name: $storage::new(),
                         )+
                     }
+                }
+
+                #[allow(dead_code)]
+                pub fn cleanup_removed(&mut self) {
+                    for id in &self.removed {
+                        $(
+                            self.$store_name.remove(*id);
+                        )+
+                    }
+                    self.removed.clear();
                 }
 
                 #[allow(dead_code)]
@@ -78,34 +91,53 @@ macro_rules! create_spawning_pool {
 
                 #[allow(dead_code)]
                 pub fn remove_entity(&mut self, id: EntityId) {
-                    $(
-                        self.$store_name.remove(id);
-                    )+
+                    self.removed.insert(id);
                 }
 
                 #[allow(dead_code)]
                 pub fn set<T>(&mut self, id: EntityId, component: T) where Self: ComponentLoader<T> {
-                    self.set_overloaded(id, component);
+                    if self.removed.get(&id).is_none() {
+                        self.set_overloaded(id, component);
+                    }
                 }
 
                 #[allow(dead_code)]
                 pub fn get<T>(&self, id: EntityId) -> Option<&T> where Self: ComponentLoader<T> {
+                    if self.removed.get(&id).is_none() {
+                        self.get_overloaded(id)
+                    } else {
+                        None
+                    }
+                }
+
+                #[allow(dead_code)]
+                pub fn force_get<T>(&self, id: EntityId) -> Option<&T> where Self: ComponentLoader<T> {
                     self.get_overloaded(id)
                 }
 
                 #[allow(dead_code)]
                 pub fn get_mut<T>(&mut self, id: EntityId) -> Option<&mut T> where Self: ComponentLoader<T> {
-                    self.get_mut_overloaded(id)
-                }
-
-                #[allow(dead_code)]
-                pub fn get_all<T>(&self) -> Vec<(EntityId, &T)> where Self: ComponentLoader<T> {
-                    self.get_all_overloaded()
+                    if self.removed.get(&id).is_none() {
+                        self.get_mut_overloaded(id)
+                    } else {
+                        None
+                    }
                 }
 
                 #[allow(dead_code)]
                 pub fn remove<T>(&mut self, id: EntityId) where Self: ComponentLoader<T> {
-                    self.remove_overloaded(id);
+                    if self.removed.get(&id).is_none() {
+                        self.remove_overloaded(id);
+                    }
+                }
+
+                #[allow(dead_code)]
+                pub fn get_all<T>(&self) -> Vec<(EntityId, &T)> where Self: ComponentLoader<T> {
+                    let ids = self.get_all_overloaded();
+                    ids.iter()
+                        .filter(|(id, _)| self.removed.get(id).is_none())
+                        .map(|i| *i)
+                        .collect()
                 }
             }
 
@@ -212,6 +244,33 @@ mod tests {
         pool.remove_entity(id);
 
         assert!(pool.get::<Velocity>(id).is_none());
+    }
+
+    #[test]
+    fn test_force_get() {
+        create_spawning_pool!(
+            (Position, pos, HashMapStorage),
+            (Velocity, vel, HashMapStorage)
+        );
+        let mut pool = SpawningPool::new();
+        let id = pool.spawn_entity();
+
+        pool.set(id, Velocity{x: 1, y: 2});
+
+        match pool.get::<Velocity>(id) {
+            Some(vel) => {
+                assert_eq!(vel.x, 1);
+                assert_eq!(vel.y, 2);
+            }
+            None => assert!(false)
+        }
+
+        pool.remove_entity(id);
+
+        assert!(pool.get::<Velocity>(id).is_none());
+        assert!(pool.force_get::<Velocity>(id).is_some());
+        pool.cleanup_removed();
+        assert!(pool.force_get::<Velocity>(id).is_none());
     }
 
     #[test]
