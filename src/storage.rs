@@ -10,9 +10,10 @@ use super::{EntityId};
 ///
 pub trait Storage<T: Clone> {
     fn new() -> Self;
-    fn get(&self, EntityId) -> Option<T>;
-    fn get_all(&self) -> Vec<(EntityId, T)>;
-    fn add(&mut self, EntityId, T);
+    fn get(&self, EntityId) -> Option<&T>;
+    fn get_all(&self) -> Vec<(EntityId, &T)>;
+    fn get_mut(&mut self, EntityId) -> Option<&mut T>;
+    fn set(&mut self, EntityId, T);
     fn remove(&mut self, EntityId);
 }
 
@@ -31,20 +32,23 @@ impl<T: Clone> Storage<T> for HashMapStorage<T> {
         }
     }
 
-    fn get(&self, id: EntityId) -> Option<T> {
-        let comp = self.storage.get(&id)?;
-        Some(comp.clone())
+    fn get(&self, id: EntityId) -> Option<&T> {
+        self.storage.get(&id)
     }
 
-    fn get_all(&self) -> Vec<(EntityId, T)> {
-        let mut all: Vec<(EntityId, T)> = vec![];
+    fn get_mut(&mut self, id: EntityId) -> Option<&mut T> {
+        self.storage.get_mut(&id)
+    }
+
+    fn get_all(&self) -> Vec<(EntityId, &T)> {
+        let mut all = vec![];
         for (k, v) in &self.storage {
-            all.push((*k, v.clone()));
+            all.push((*k, v));
         }
         all
     }
 
-    fn add(&mut self, id: EntityId, comp: T) {
+    fn set(&mut self, id: EntityId, comp: T) {
         self.storage.insert(id, comp);
     }
 
@@ -57,6 +61,7 @@ impl<T: Clone> Storage<T> for HashMapStorage<T> {
 /// Vector implementation of the storage trait, best used for components that most entities have
 /// and where fast access is important
 ///
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorStorage<T: Clone> {
     size: u64,
@@ -71,29 +76,37 @@ impl<T: Clone> Storage<T> for VectorStorage<T> {
         }
     }
 
-    fn get(&self, id: EntityId) -> Option<T> {
+    fn get(&self, id: EntityId) -> Option<&T> {
         if id >= self.size {
             return None;
         }
-        match self.storage[id as usize] {
-            Some(ref c) => {
-                Some(c.clone())
-            }
+        match self.storage.get(id as usize) {
+            Some(c) => c.as_ref(),
             None => None
         }
     }
 
-    fn get_all(&self) -> Vec<(EntityId, T)> {
-        let mut all: Vec<(EntityId, T)> = vec![];
+    fn get_mut(&mut self, id: EntityId) -> Option<&mut T> {
+        if id >= self.size {
+            return None;
+        }
+        match self.storage.get_mut(id as usize) {
+            Some(c) => c.as_mut(),
+            None => None
+        }
+    }
+
+    fn get_all(&self) -> Vec<(EntityId, &T)> {
+        let mut all = vec![];
         for (id, comp) in self.storage.iter().enumerate() {
             if let Some(ref c) = *comp {
-                all.push((id as EntityId, c.clone()));
+                all.push((id as EntityId, c));
             }
         }
         all
     }
 
-    fn add(&mut self, id: EntityId, comp: T) {
+    fn set(&mut self, id: EntityId, comp: T) {
         if id >= self.size {
             self.storage.resize((id * 2) as usize, None);
             self.size = id * 2;
